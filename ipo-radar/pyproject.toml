@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "ipo-radar"
+version = "0.1.0"
+description = "IPO决策信息系统 - IPO Decision Intelligence System"
+authors = []
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "^2.31"
+pandas = "^2.1"
+yfinance = "^0.2"
+sec-api = "^1.0"
+sqlalchemy = "^2.0"
+streamlit = "^1.30"
+langchain = "^0.2"
+litellm = "^1.0"
+schedule = "^1.2"
+python-dotenv = "^1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+ruff = "^0.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
