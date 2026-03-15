@@ -1,36 +1,24 @@
 """情绪分析模块 - Sentiment Analysis: Analyze market sentiment for IPO stocks."""
 
-from dataclasses import dataclass
-from enum import Enum
+from src.sentiment.keyword_sentiment import (
+    KeywordSentimentResult,
+    score_text,
+    score_texts,
+)
+from src.sentiment.news_fetcher import NewsItem, fetch_news
+from src.sentiment.sentiment_scorer import (
+    SentimentReport,
+    analyze_sentiment,
+    format_sentiment_report,
+)
 
-
-class SentimentLevel(Enum):
-    VERY_BEARISH = -2
-    BEARISH = -1
-    NEUTRAL = 0
-    BULLISH = 1
-    VERY_BULLISH = 2
-
-
-@dataclass
-class SentimentResult:
-    """Sentiment analysis result for a ticker."""
-
-    ticker: str
-    overall: SentimentLevel
-    score: float  # -1.0 to 1.0
-    news_count: int = 0
-    social_mentions: int = 0
-    summary: str = ""
-
-
-class SentimentAnalyzer:
-    """Analyzes news and social sentiment for IPO stocks."""
-
-    def analyze(self, ticker: str) -> SentimentResult:
-        """Analyze sentiment for a given ticker."""
-        raise NotImplementedError
-
-    def batch_analyze(self, tickers: list[str]) -> list[SentimentResult]:
-        """Analyze sentiment for multiple tickers."""
-        raise NotImplementedError
+__all__ = [
+    "KeywordSentimentResult",
+    "NewsItem",
+    "SentimentReport",
+    "analyze_sentiment",
+    "fetch_news",
+    "format_sentiment_report",
+    "score_text",
+    "score_texts",
+]
