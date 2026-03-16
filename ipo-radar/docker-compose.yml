@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  # -------------------------------------------------------
+  # Streamlit Dashboard
+  # -------------------------------------------------------
+  dashboard:
+    build: .
+    container_name: ipo-radar-dashboard
+    command: streamlit run src/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - ollama
+
+  # -------------------------------------------------------
+  # Scheduler (periodic scanning + notifications)
+  # -------------------------------------------------------
+  scheduler:
+    build: .
+    container_name: ipo-radar-scheduler
+    command: python -m src.scheduler
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - ollama
+
+  # -------------------------------------------------------
+  # Ollama - Local LLM for sentiment analysis (optional)
+  # -------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ipo-radar-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:
