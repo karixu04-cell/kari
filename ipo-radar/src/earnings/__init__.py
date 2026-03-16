@@ -1,31 +1,21 @@
 """业绩追踪模块 - Earnings Tracker: Track post-IPO earnings performance."""
 
-from dataclasses import dataclass
-from datetime import date
+from src.earnings.earnings_analyzer import (
+    EarningsAnalysis,
+    analyze_earnings,
+    format_earnings_analysis,
+)
+from src.earnings.earnings_calendar import (
+    UpcomingEarnings,
+    get_earnings_date,
+    get_upcoming_earnings,
+)
 
-
-@dataclass
-class EarningsReport:
-    """A single earnings report."""
-
-    ticker: str
-    report_date: date
-    quarter: str
-    revenue: float | None = None
-    eps: float | None = None
-    revenue_estimate: float | None = None
-    eps_estimate: float | None = None
-    revenue_surprise: float | None = None
-    eps_surprise: float | None = None
-
-
-class EarningsTracker:
-    """Tracks earnings reports and surprises for IPO stocks."""
-
-    def get_history(self, ticker: str) -> list[EarningsReport]:
-        """Get earnings history for a ticker."""
-        raise NotImplementedError
-
-    def get_upcoming(self, tickers: list[str], days: int = 30) -> list[EarningsReport]:
-        """Get upcoming earnings dates."""
-        raise NotImplementedError
+__all__ = [
+    "EarningsAnalysis",
+    "UpcomingEarnings",
+    "analyze_earnings",
+    "format_earnings_analysis",
+    "get_earnings_date",
+    "get_upcoming_earnings",
+]
