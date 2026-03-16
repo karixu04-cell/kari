@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass, field
 
+from src.scorer.daily_scan import format_full_report, run_daily_scan
+from src.scorer.signal_aggregator import AggregatedReport, SignalAggregator
+
 
 @dataclass
 class ScoreBreakdown:
@@ -25,21 +28,11 @@ class CompositeScore:
     summary: str = ""
 
 
-class IPOScorer:
-    """Combines all analysis modules into a single composite score."""
-
-    WEIGHTS: dict[str, float] = {
-        "fundamentals": 0.30,
-        "technicals": 0.20,
-        "sentiment": 0.15,
-        "lockup_risk": 0.15,
-        "earnings_momentum": 0.20,
-    }
-
-    def score(self, ticker: str) -> CompositeScore:
-        """Generate a composite score for a given ticker."""
-        raise NotImplementedError
-
-    def rank(self, tickers: list[str]) -> list[CompositeScore]:
-        """Score and rank multiple tickers."""
-        raise NotImplementedError
+__all__ = [
+    "AggregatedReport",
+    "CompositeScore",
+    "ScoreBreakdown",
+    "SignalAggregator",
+    "format_full_report",
+    "run_daily_scan",
+]
