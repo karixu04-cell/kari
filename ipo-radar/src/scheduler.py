@@ -59,9 +59,9 @@ def _get_watchlist() -> list[str]:
 def _notify(reports: list[AggregatedReport]) -> None:
     """Send notifications for actionable signals."""
     try:
-        from src.notifier import TelegramNotifier
+        from src.notifier import FeishuNotifier
 
-        notifier = TelegramNotifier()
+        notifier = FeishuNotifier()
         if not notifier.is_configured():
             return
         notifier.process_reports(reports)

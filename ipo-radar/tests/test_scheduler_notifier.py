@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.notifier import TelegramNotifier
+from src.notifier import FeishuNotifier
 from src.scheduler import (
     _get_watchlist,
     _intraday_guard,
@@ -18,77 +19,103 @@ from src.scorer.signal_aggregator import AggregatedReport
 
 
 # ======================================================================
-# notifier.py – TelegramNotifier
+# notifier.py – FeishuNotifier
 # ======================================================================
 
 
-class TestTelegramNotifier:
+class TestFeishuNotifier:
     def test_is_configured_false_by_default(self):
-        notifier = TelegramNotifier(bot_token="", chat_id="")
+        notifier = FeishuNotifier(webhook_url="")
         assert notifier.is_configured() is False
 
     def test_is_configured_true(self):
-        notifier = TelegramNotifier(bot_token="123:ABC", chat_id="456")
+        notifier = FeishuNotifier(webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/xxx")
         assert notifier.is_configured() is True
 
-    def test_is_configured_partial(self):
-        notifier = TelegramNotifier(bot_token="123:ABC", chat_id="")
-        assert notifier.is_configured() is False
-
     @patch("src.notifier.requests.post")
-    def test_send_message_success(self, mock_post):
+    def test_send_card_success(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"ok": True}
+        mock_resp.json.return_value = {"code": 0, "msg": "success"}
         mock_post.return_value = mock_resp
 
-        notifier = TelegramNotifier(bot_token="123:ABC", chat_id="456")
-        result = notifier.send_message("test message")
+        notifier = FeishuNotifier(webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/xxx")
+        card = {"header": {"title": {"tag": "plain_text", "content": "Test"}}, "elements": []}
+        result = notifier.send_card(card)
         assert result is True
         mock_post.assert_called_once()
 
-        # Verify payload
+        # Verify payload structure
         call_kwargs = mock_post.call_args
         payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
-        assert payload["chat_id"] == "456"
-        assert payload["text"] == "test message"
-        assert payload["parse_mode"] == "HTML"
+        assert payload["msg_type"] == "interactive"
+        assert "card" in payload
 
     @patch("src.notifier.requests.post")
-    def test_send_message_failure(self, mock_post):
-        mock_post.side_effect = Exception("Connection error")
-
-        notifier = TelegramNotifier(bot_token="123:ABC", chat_id="456")
-        result = notifier.send_message("test")
-        assert result is False
-
-    def test_send_message_not_configured(self):
-        notifier = TelegramNotifier(bot_token="", chat_id="")
-        result = notifier.send_message("test")
-        assert result is False
-
-    @patch("src.notifier.requests.post")
-    def test_send_message_api_error(self, mock_post):
+    def test_send_card_with_status_code(self, mock_post):
+        """Feishu sometimes returns StatusCode instead of code."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"ok": False, "description": "Bad Request"}
+        mock_resp.json.return_value = {"StatusCode": 0, "StatusMessage": "success"}
         mock_post.return_value = mock_resp
 
-        notifier = TelegramNotifier(bot_token="123:ABC", chat_id="456")
-        result = notifier.send_message("test")
+        notifier = FeishuNotifier(webhook_url="https://feishu.example/hook/xxx")
+        result = notifier.send_card({"header": {}, "elements": []})
+        assert result is True
+
+    @patch("src.notifier.requests.post")
+    def test_send_card_failure(self, mock_post):
+        mock_post.side_effect = Exception("Connection error")
+
+        notifier = FeishuNotifier(webhook_url="https://feishu.example/hook/xxx")
+        result = notifier.send_card({})
+        assert result is False
+
+    def test_send_card_not_configured(self):
+        notifier = FeishuNotifier(webhook_url="")
+        result = notifier.send_card({})
+        assert result is False
+
+    @patch("src.notifier.requests.post")
+    def test_send_card_api_error(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"code": 19001, "msg": "param invalid"}
+        mock_post.return_value = mock_resp
+
+        notifier = FeishuNotifier(webhook_url="https://feishu.example/hook/xxx")
+        result = notifier.send_card({})
         assert result is False
 
 
 # ======================================================================
-# notifier.py – _build_messages
+# notifier.py – _build_cards
 # ======================================================================
 
 
-class TestBuildMessages:
-    def setup_method(self):
-        self.notifier = TelegramNotifier(bot_token="test", chat_id="test")
+def _extract_card_text(card: dict) -> str:
+    """Helper: extract all text content from a Feishu card for assertion."""
+    parts = []
+    header = card.get("header", {})
+    title = header.get("title", {}).get("content", "")
+    parts.append(title)
 
-    def test_strong_opportunity_message(self):
+    for el in card.get("elements", []):
+        text = el.get("text", {})
+        if text:
+            parts.append(text.get("content", ""))
+        # note elements
+        for note_el in el.get("elements", []):
+            parts.append(note_el.get("content", ""))
+
+    return "\n".join(parts)
+
+
+class TestBuildCards:
+    def setup_method(self):
+        self.notifier = FeishuNotifier(webhook_url="https://feishu.example/hook/test")
+
+    def test_strong_opportunity_card(self):
         report = AggregatedReport(
             ticker="CAVA",
             company="CAVA Group",
@@ -106,13 +133,18 @@ class TestBuildMessages:
                 "first_earnings": {},
             },
         )
-        messages = self.notifier._build_messages(report)
-        assert len(messages) >= 1
-        assert "STRONG OPPORTUNITY" in messages[0]
-        assert "CAVA" in messages[0]
-        assert "$80.00" in messages[0]
+        cards = self.notifier._build_cards(report)
+        assert len(cards) >= 1
 
-    def test_breakout_message(self):
+        card = cards[0]
+        assert card["header"]["template"] == "red"
+        text = _extract_card_text(card)
+        assert "STRONG OPPORTUNITY" in text
+        assert "CAVA" in text
+        assert "$80.00" in text
+        assert "75/100" in text
+
+    def test_breakout_card(self):
         report = AggregatedReport(
             ticker="ARM",
             company="Arm Holdings",
@@ -124,11 +156,18 @@ class TestBuildMessages:
                 "first_earnings": {},
             },
         )
-        messages = self.notifier._build_messages(report)
-        assert any("BREAKOUT" in m for m in messages)
-        assert any("strong" in m for m in messages)
+        cards = self.notifier._build_cards(report)
+        assert len(cards) >= 1
 
-    def test_lockup_imminent_message(self):
+        texts = [_extract_card_text(c) for c in cards]
+        assert any("BREAKOUT" in t for t in texts)
+        assert any("strong" in t for t in texts)
+
+        # Breakout card should be red
+        breakout_cards = [c for c in cards if "BREAKOUT" in c["header"]["title"]["content"]]
+        assert breakout_cards[0]["header"]["template"] == "red"
+
+    def test_lockup_imminent_card(self):
         report = AggregatedReport(
             ticker="BIRK",
             company="Birkenstock",
@@ -139,12 +178,18 @@ class TestBuildMessages:
                 "first_earnings": {},
             },
         )
-        messages = self.notifier._build_messages(report)
-        assert any("LOCKUP" in m for m in messages)
-        assert any("2 days" in m for m in messages)
-        assert any("65%" in m for m in messages)
+        cards = self.notifier._build_cards(report)
+        assert len(cards) >= 1
 
-    def test_earnings_alert_message(self):
+        # Find the lockup card
+        lockup_cards = [c for c in cards if c["header"]["template"] == "orange"]
+        assert len(lockup_cards) == 1
+
+        text = _extract_card_text(lockup_cards[0])
+        assert "2" in text
+        assert "65%" in text
+
+    def test_earnings_alert_card(self):
         report = AggregatedReport(
             ticker="CART",
             company="Instacart",
@@ -157,9 +202,16 @@ class TestBuildMessages:
                 "first_earnings": {"days_until": 2, "earnings_signal": None},
             },
         )
-        messages = self.notifier._build_messages(report)
-        assert any("EARNINGS" in m for m in messages)
-        assert any("2 days" in m for m in messages)
+        cards = self.notifier._build_cards(report)
+        assert len(cards) >= 1
+
+        # Earnings card should be blue
+        earnings_cards = [c for c in cards if c["header"]["template"] == "blue"]
+        assert len(earnings_cards) == 1
+
+        text = _extract_card_text(earnings_cards[0])
+        assert "2" in text
+        assert "CART" in text
 
     def test_no_alert_for_no_action(self):
         report = AggregatedReport(
@@ -171,11 +223,11 @@ class TestBuildMessages:
                 "first_earnings": {},
             },
         )
-        messages = self.notifier._build_messages(report)
-        assert len(messages) == 0
+        cards = self.notifier._build_cards(report)
+        assert len(cards) == 0
 
     def test_multiple_alerts(self):
-        """STRONG_OPPORTUNITY with breakout should produce 2 messages."""
+        """STRONG_OPPORTUNITY with breakout should produce 2 cards."""
         report = AggregatedReport(
             ticker="TEST",
             company="Test Corp",
@@ -193,8 +245,42 @@ class TestBuildMessages:
                 "first_earnings": {},
             },
         )
-        messages = self.notifier._build_messages(report)
-        assert len(messages) == 2  # STRONG_OPPORTUNITY + BREAKOUT
+        cards = self.notifier._build_cards(report)
+        assert len(cards) == 2  # STRONG_OPPORTUNITY + BREAKOUT
+
+    def test_card_structure_valid(self):
+        """Verify card has required Feishu structure."""
+        report = AggregatedReport(
+            ticker="CAVA",
+            company="CAVA Group",
+            current_price=80.0,
+            fundamental_score=75,
+            sentiment={"score": 0.5},
+            overall_signal="STRONG_OPPORTUNITY",
+            signal_reasons=["Test"],
+            windows={
+                "ipo_base_breakout": {},
+                "lockup_expiry": {"status": "safe"},
+                "first_earnings": {},
+            },
+        )
+        cards = self.notifier._build_cards(report)
+        card = cards[0]
+
+        # Must have header with title and template
+        assert "header" in card
+        assert "title" in card["header"]
+        assert card["header"]["title"]["tag"] == "plain_text"
+        assert "template" in card["header"]
+
+        # Must have elements array
+        assert "elements" in card
+        assert isinstance(card["elements"], list)
+
+        # Each div element should use lark_md
+        for el in card["elements"]:
+            if el["tag"] == "div":
+                assert el["text"]["tag"] == "lark_md"
 
 
 # ======================================================================
@@ -207,10 +293,10 @@ class TestProcessReports:
     def test_process_sends_notifications(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"ok": True}
+        mock_resp.json.return_value = {"code": 0, "msg": "success"}
         mock_post.return_value = mock_resp
 
-        notifier = TelegramNotifier(bot_token="123:ABC", chat_id="456")
+        notifier = FeishuNotifier(webhook_url="https://feishu.example/hook/xxx")
         reports = [
             AggregatedReport(
                 ticker="TEST",
@@ -233,7 +319,7 @@ class TestProcessReports:
         assert sent == 1
 
     def test_process_not_configured(self):
-        notifier = TelegramNotifier(bot_token="", chat_id="")
+        notifier = FeishuNotifier(webhook_url="")
         sent = notifier.process_reports([])
         assert sent == 0
 
