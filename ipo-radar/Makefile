@@ -1,18 +1,20 @@
-.PHONY: setup scan dashboard scheduler start stop test lint clean
+.PHONY: setup setup-ollama scan scan-all dashboard scheduler \
+       start start-gpu start-cpu stop logs build \
+       test lint clean help
 
 # -------------------------------------------------------
-# Setup
+# Local Setup
 # -------------------------------------------------------
 
-setup:  ## Install all dependencies
-	pip install -e ".[dev]" 2>/dev/null || pip install -r requirements.txt 2>/dev/null || \
+setup:  ## Install all dependencies (local)
+	pip install -e ".[dev]" 2>/dev/null || pip install -e . 2>/dev/null || \
 	pip install schedule python-dotenv requests pandas yfinance streamlit plotly
 
-setup-ollama:  ## Pull the Qwen3-8B model for local sentiment analysis
+setup-ollama:  ## Pull the Qwen3-8B model for sentiment analysis
 	ollama pull qwen3:8b
 
 # -------------------------------------------------------
-# Run tasks
+# Local Run
 # -------------------------------------------------------
 
 scan:  ## Run a single scan on the watchlist
@@ -21,25 +23,30 @@ scan:  ## Run a single scan on the watchlist
 scan-all:  ## Run all scheduled tasks once
 	python -m src.scheduler --once
 
-dashboard:  ## Start the Streamlit dashboard
+dashboard:  ## Start the Streamlit dashboard (local)
 	streamlit run src/dashboard/app.py
 
-scheduler:  ## Start the background scheduler
+scheduler:  ## Start the background scheduler (local)
 	python -m src.scheduler
 
 # -------------------------------------------------------
 # Docker
 # -------------------------------------------------------
 
-start:  ## Start all services (dashboard + scheduler + ollama)
+build:  ## Build Docker image
+	docker compose build
+
+start:  ## Start core services (dashboard + scheduler)
 	docker compose up -d
 
-stop:  ## Stop all services
-	docker compose down
+start-gpu:  ## Start all services including Ollama with GPU
+	docker compose --profile gpu up -d
 
-start-no-gpu:  ## Start without GPU (ollama uses CPU)
-	docker compose up -d --scale ollama=0
-	docker compose up -d ollama || true
+start-cpu:  ## Start all services including Ollama on CPU
+	docker compose --profile cpu up -d
+
+stop:  ## Stop all services
+	docker compose --profile gpu --profile cpu down
 
 logs:  ## Tail logs for all services
 	docker compose logs -f

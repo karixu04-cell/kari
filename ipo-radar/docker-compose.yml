@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # -------------------------------------------------------
   # Streamlit Dashboard
@@ -7,9 +5,13 @@ services:
   dashboard:
     build: .
     container_name: ipo-radar-dashboard
-    command: streamlit run src/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    command: >
+      streamlit run src/dashboard/app.py
+      --server.port=8501
+      --server.address=0.0.0.0
+      --server.headless=true
     ports:
-      - "8501:8501"
+      - "${DASHBOARD_PORT:-8501}:8501"
     env_file:
       - .env
     environment:
@@ -17,11 +19,14 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    depends_on:
-      - ollama
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8501/_stcore/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # -------------------------------------------------------
-  # Scheduler (periodic scanning + notifications)
+  # Scheduler (periodic scanning + Feishu notifications)
   # -------------------------------------------------------
   scheduler:
     build: .
@@ -31,19 +36,20 @@ services:
       - .env
     environment:
       - PYTHONPATH=/app
-      - OLLAMA_HOST=http://ollama:11434
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    depends_on:
-      - ollama
+    # No healthcheck — long-running background loop
 
   # -------------------------------------------------------
   # Ollama - Local LLM for sentiment analysis (optional)
+  # Activate with:  docker compose --profile gpu up -d
+  #            or:  docker compose --profile cpu up -d
   # -------------------------------------------------------
-  ollama:
+  ollama-gpu:
     image: ollama/ollama:latest
     container_name: ipo-radar-ollama
+    profiles: ["gpu"]
     ports:
       - "11434:11434"
     volumes:
@@ -56,6 +62,16 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  ollama-cpu:
+    image: ollama/ollama:latest
+    container_name: ipo-radar-ollama
+    profiles: ["cpu"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
 
 volumes:
   ollama_data:
